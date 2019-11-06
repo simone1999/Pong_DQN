@@ -8,6 +8,7 @@ from Code.ReplayMemory import replayMemory
 def main():
     numGames = 10
     targetUpdateDelay = 100
+    targetUpdateFactor = 0.1
     train_start = 1_000
     batchSize = 500
     memorySize = 100_000
@@ -57,7 +58,7 @@ def main():
 
         if not iteration % targetUpdateDelay:
             print("Updating Target Model")
-            network.updateTargetModel()
+            network.updateTargetModel(targetUpdateFactor)
 
         states = next_states
 

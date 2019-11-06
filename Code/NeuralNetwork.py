@@ -12,7 +12,7 @@ class Network:
 
         self.model = self.buildModel()
         self.targetModel = self.buildModel()
-        self.updateTargetModel()
+        self.updateTargetModel(1.0)
 
     def buildModel(self):
         i = keras.layers.Input(shape=(self.stateSize,))
@@ -50,13 +50,24 @@ class Network:
     def train(self, state, nextState, action, reward, done):
         mask = np.eye(self.actions)[action]  # converts to one hot Array
 
-        nextQ = self.targetModel.predict([nextState, np.ones(mask.shape)], batch_size=self.predictBatchSize)
+        nextQTarget = self.targetModel.predict([nextState, np.ones(mask.shape)], batch_size=self.predictBatchSize)
+        nextQLive = self.model.predict([nextState, np.ones(mask.shape)], batch_size=self.predictBatchSize)
+
+        nextQTargetMax = np.max(nextQTarget, axis=-1)
+        nextQLiveMax = np.max(nextQLive, axis=-1)
+
+        nextQ = np.min([nextQTargetMax, nextQLiveMax], axis=0)
 
         nextQ[done] = 0
-        target = reward + self.discountFactor * np.max(nextQ, axis=1)
+        target = reward + self.discountFactor * nextQ
 
         self.model.fit([state, mask], mask*target[:, None], batch_size=self.trainBatchSize, verbose=2)
 
-    def updateTargetModel(self):
-        self.targetModel.set_weights(self.model.get_weights())
+    def updateTargetModel(self, targetUpdateFactor):
+        modelWeights = np.array(self.model.get_weights())
+        targetWeights = np.array(self.targetModel.get_weights())
+
+        newWeights = targetUpdateFactor * modelWeights + (1 - targetUpdateFactor) * targetWeights
+
+        self.targetModel.set_weights(newWeights)
 
