@@ -1,25 +1,25 @@
 import numpy as np
 import tensorflow.keras as keras
 
-class Network:
-    def __init__(self, loadModel):
-        self.actions = 3
-        self.stateSize = 6
-        self.discountFactor = 0.98
-        self.predictBatchSize = 100_000
-        self.trainBatchSize = 32
-        self.lr = 1e-3
+class DoubleDeepQAgent:
+    def __init__(self, action_size, state_size, model_path, load_model=False, discount_factor=0.98, train_batch_size=32, predict_batch_size=100_000, lr=1e-3):
+        self.actions = action_size  # 3
+        self.stateSize = state_size  # 6
+        self.discountFactor = discount_factor
+        self.predictBatchSize = predict_batch_size
+        self.trainBatchSize = train_batch_size
+        self.lr = lr
+        self.modelPath = model_path  # "../Model/good.h5"
 
-        self.model = self.buildModel()
-        self.targetModel = self.buildModel()
+        self.model = self.build_model()
+        self.targetModel = self.build_model()
 
-        if loadModel:
-            self.model = keras.models.load_model("../Model/good.h5")
+        if load_model:
+            self.model = keras.models.load_model(self.modelPath)
 
-        self.updateTargetModel(1.0)
+        self.update_target_model(1.0)
 
-
-    def buildModel(self):
+    def build_model(self):
         i = keras.layers.Input(shape=(self.stateSize,))
         mask = keras.layers.Input(shape=(self.actions,))
 
@@ -41,7 +41,7 @@ class Network:
         Y = self.model.predict([X, np.ones((len(X), self.actions))], batch_size=self.predictBatchSize)
         return Y
 
-    def getActions(self, X, randomFactor=0., excludeFirstGame=False):
+    def get_actions(self, X, randomFactor=0., excludeFirstGame=False):
         randomStart = 1 if excludeFirstGame else 0
         actions = self.predict(X)
         actionSize = len(actions[0])
@@ -52,12 +52,12 @@ class Network:
 
         return actions
 
-    def train(self, state, nextState, action, reward, done):
+    def train(self, state, next_state, action, reward, done):
         #'''
         mask = np.eye(self.actions)[action]  # converts to one hot Array
 
-        nextQTarget = self.targetModel.predict([nextState, np.ones(mask.shape)], batch_size=self.predictBatchSize)
-        nextQLive = self.model.predict([nextState, np.ones(mask.shape)], batch_size=self.predictBatchSize)
+        nextQTarget = self.targetModel.predict([next_state, np.ones(mask.shape)], batch_size=self.predictBatchSize)
+        nextQLive = self.model.predict([next_state, np.ones(mask.shape)], batch_size=self.predictBatchSize)
 
         nextQTargetMax = np.max(nextQTarget, axis=-1)
         nextQLiveMax = np.max(nextQLive, axis=-1)
@@ -74,7 +74,7 @@ class Network:
         mask = np.eye(self.actions)[action]  # converts to one hot Array
         oneMask = np.ones(mask.shape)
 
-        nextQTarget = self.targetModel.predict([nextState, oneMask], batch_size=self.predictBatchSize)
+        nextQTarget = self.targetModel.predict([next_state, oneMask], batch_size=self.predictBatchSize)
         predictedQ = self.model.predict([state, oneMask], batch_size=self.predictBatchSize)
 
         nextUpdatedQ = np.max(nextQTarget, axis=-1)
@@ -89,12 +89,13 @@ class Network:
 
         '''
 
+    def update_target_model(self, target_update_factor):
+        model_weights = np.array(self.model.get_weights())
+        target_weights = np.array(self.targetModel.get_weights())
 
-    def updateTargetModel(self, targetUpdateFactor):
-        modelWeights = np.array(self.model.get_weights())
-        targetWeights = np.array(self.targetModel.get_weights())
+        new_weights = target_update_factor * model_weights + (1 - target_update_factor) * target_weights
 
-        newWeights = targetUpdateFactor * modelWeights + (1 - targetUpdateFactor) * targetWeights
+        self.targetModel.set_weights(new_weights)
 
-        self.targetModel.set_weights(newWeights)
-
+    def save_model(self):
+        self.model.save(self.modelPath)

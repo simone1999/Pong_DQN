@@ -12,7 +12,7 @@ class replayMemory:
 
     def save_multiple(self, states, next_states, actions, rewards, dones):
         for state, next_state, action, reward, done in zip(states, next_states, actions, rewards, dones):
-            self.save_single(state, next_state, action, reward, done)
+            self.memory.append([state, next_state, action, reward, done])
 
     def get_batch(self, batchSize):
         assert batchSize <= len(self.memory)
