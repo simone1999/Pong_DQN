@@ -17,7 +17,7 @@ class Pong:
         self.paddleSpeed = 2
         self.ballSize = 2
         self.bounceRandomness = 0.1
-        self.ballSpeedup = 1.0001
+        self.ballSpeedup = 1.001
 
         self.resetGames(np.ones(shape=self.numGames, dtype=bool))
 

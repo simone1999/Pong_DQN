@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow.keras as keras
 
 class Network:
-    def __init__(self):
+    def __init__(self, loadModel):
         self.actions = 3
         self.stateSize = 6
         self.discountFactor = 0.98
@@ -12,7 +12,12 @@ class Network:
 
         self.model = self.buildModel()
         self.targetModel = self.buildModel()
+
+        if loadModel:
+            self.model = keras.models.load_model("../Model/good.h5")
+
         self.updateTargetModel(1.0)
+
 
     def buildModel(self):
         i = keras.layers.Input(shape=(self.stateSize,))
@@ -48,6 +53,7 @@ class Network:
         return actions
 
     def train(self, state, nextState, action, reward, done):
+        #'''
         mask = np.eye(self.actions)[action]  # converts to one hot Array
 
         nextQTarget = self.targetModel.predict([nextState, np.ones(mask.shape)], batch_size=self.predictBatchSize)
@@ -62,6 +68,27 @@ class Network:
         target = reward + self.discountFactor * nextQ
 
         self.model.fit([state, mask], mask*target[:, None], batch_size=self.trainBatchSize, verbose=2)
+
+        '''
+
+        mask = np.eye(self.actions)[action]  # converts to one hot Array
+        oneMask = np.ones(mask.shape)
+
+        nextQTarget = self.targetModel.predict([nextState, oneMask], batch_size=self.predictBatchSize)
+        predictedQ = self.model.predict([state, oneMask], batch_size=self.predictBatchSize)
+
+        nextUpdatedQ = np.max(nextQTarget, axis=-1)
+
+        nextUpdatedQ[done] = 0
+
+        target = reward + self.discountFactor * nextUpdatedQ
+
+        predictedQ[np.arange(len(action)), action] = target
+
+        self.model.fit([state, oneMask], predictedQ, batch_size=self.trainBatchSize, verbose=2)
+
+        '''
+
 
     def updateTargetModel(self, targetUpdateFactor):
         modelWeights = np.array(self.model.get_weights())
