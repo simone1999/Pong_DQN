@@ -10,6 +10,7 @@ import math
 
 def main():
     loadModel = False
+    saveModel = True
     competiveAI = True
     numGames = 10
     modelSaveInterval = 500
@@ -17,7 +18,7 @@ def main():
     targetUpdatePercentage = 0.2
     batchSize = 1_000
     memorySize = 1_000_000
-    randomFactor = 0.1
+    randomFactor = [0, 1, 0.5, 0.5, 0.2, 0.1, 0.05, 0.01, 0, 0] #0.1
     modelPath = "../Model/test.h5"
     excludeFirstGameRandomness = True
 
@@ -79,7 +80,8 @@ def main():
             network.update_target_model(targetUpdatePercentage)
 
         if not iteration % modelSaveInterval:
-            network.save_model()
+            if saveModel:
+                network.save_model()
 
         states = next_states
 

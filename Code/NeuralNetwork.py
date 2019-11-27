@@ -1,16 +1,20 @@
 import numpy as np
 import tensorflow.keras as keras
+import tensorflow as tf
+from tensorflow.keras import backend as K
+import random
 
 class DoubleDeepQAgent:
-    def __init__(self, action_size, state_size, model_path, load_model=False, discount_factor=0.98, train_batch_size=32, predict_batch_size=100_000, lr=1e-3):
-        self.actions = action_size  # 3
-        self.stateSize = state_size  # 6
+    def __init__(self, action_size, state_size, model_path, load_model=False, discount_factor=0.99, train_batch_size=32, predict_batch_size=100_000, lr=1e-3):
+        self.actions = action_size
+        self.stateSize = state_size
         self.discountFactor = discount_factor
         self.predictBatchSize = predict_batch_size
         self.trainBatchSize = train_batch_size
         self.lr = lr
-        self.modelPath = model_path  # "../Model/good.h5"
+        self.modelPath = model_path
 
+        self.configure_keras(num_gpus=0)
         self.model = self.build_model()
         self.targetModel = self.build_model()
 
@@ -42,18 +46,28 @@ class DoubleDeepQAgent:
         return Y
 
     def get_actions(self, X, randomFactor=0., excludeFirstGame=False):
-        randomStart = 1 if excludeFirstGame else 0
-        actions = self.predict(X)
-        actionSize = len(actions[0])
-        actions = np.argmax(actions, axis=-1)
-        num_random = int(len(actions)/randomFactor)
-        random_indexes = np.random.randint(randomStart, len(actions), size=num_random)# first Index is never random for showing Gameplay
-        actions[random_indexes] = np.random.randint(0, actionSize, size=len(random_indexes))
+        if isinstance(randomFactor, (int, float)):
+            randomFactor = np.full(len(X), randomFactor)
+        else:
+            randomFactor = np.array(randomFactor)
+        randomFactor[0] = 0. if excludeFirstGame else 1.
 
+        assert len(randomFactor) == len(X)
+
+        actions = np.zeros(len(X), dtype=int)
+
+        random_values = np.random.uniform(0., 1., randomFactor.size)
+        random_mask = randomFactor > random_values
+        random_mask_inverted = np.invert(random_mask)
+
+        prediction = self.predict(X[random_mask_inverted])
+        num_actions = len(prediction[0])
+        actions[random_mask_inverted] = np.argmax(prediction, axis=-1)
+
+        actions[random_mask] = np.random.randint(0, num_actions, size=np.sum(random_mask))
         return actions
 
     def train(self, state, next_state, action, reward, done):
-        #'''
         mask = np.eye(self.actions)[action]  # converts to one hot Array
 
         nextQTarget = self.targetModel.predict([next_state, np.ones(mask.shape)], batch_size=self.predictBatchSize)
@@ -99,3 +113,15 @@ class DoubleDeepQAgent:
 
     def save_model(self):
         self.model.save(self.modelPath)
+
+    def configure_keras(self, num_gpus=0):
+        config = tf.ConfigProto(intra_op_parallelism_threads=8,
+                                inter_op_parallelism_threads=8,
+                                allow_soft_placement=True,
+                                device_count={'CPU': 1,
+                                              'GPU': num_gpus}
+                                )
+
+        session = tf.Session(config=config)
+        K.set_session(session)
+
