@@ -4,30 +4,35 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 from Code.pong import Pong
 import numpy as np
 import pygame
-from Code.NeuralNetwork import DoubleDeepQAgent as Network
-from Code.ReplayMemory import replayMemory
+from Code.NeuralNetwork import DDQN
+from Code.NeuralNetwork import AutoEncoder
+from Code.ReplayMemory import ReplayMemory
 import math
 
 def main():
     loadModel = False
     saveModel = True
     competiveAI = True
-    numGames = 10
-    modelSaveInterval = 500
-    targetUpdateDelay = 100
+    numGames = 1
+    modelSaveInterval = 5_000
+    targetUpdateDelay = 1_000
     targetUpdatePercentage = 0.2
     batchSize = 1_000
     memorySize = 1_000_000
-    randomFactor = [0, 1, 0.5, 0.5, 0.2, 0.1, 0.05, 0.01, 0, 0] #0.1
+    randomFactor = 0.25
     modelPath = "../Model/test.h5"
-    excludeFirstGameRandomness = True
 
     actionSize = 3
     stateSize = 6
+    encodingDim = 10
 
     game = Pong(numGames)
-    network = Network(actionSize, stateSize, modelPath, load_model=loadModel)
-    memory = replayMemory(memorySize)
+    memory = ReplayMemory(memorySize, (stateSize,))
+    auto_encoder = AutoEncoder(stateSize, encodingDim)
+    network = DDQN(encodingDim, actionSize)
+
+    if loadModel:
+        network.load_model(path=modelPath)
 
     train_start = math.ceil(batchSize / numGames)
     autoplay = True
@@ -45,9 +50,11 @@ def main():
         previousKeyADown = keys[pygame.K_a]
 
         if iteration > train_start:
-            actionRight = network.get_actions(states, randomFactor=randomFactor, excludeFirstGame=excludeFirstGameRandomness)
+            encoded = auto_encoder.encode(states)
+            actionRight = network.get_actions(encoded)
             if(competiveAI):
-                actionLeft = network.get_actions(changeStateSide(states), randomFactor=randomFactor, excludeFirstGame=excludeFirstGameRandomness)
+                encoded = auto_encoder.encode(changeStateSide(states))
+                actionLeft = network.get_actions(encoded, random_factor=randomFactor)
             else:
                 actionLeft = simpleBotLeft(numGames, states)
         else:
@@ -69,10 +76,15 @@ def main():
         saveReplayMemory(memory, states, next_states, actionRight, actionLeft, rewards, dones)
 
         if iteration > train_start:
-            train_states, train_next_states, train_actions, train_rewards, train_dones = memory.get_batch(batchSize)
-            network.train(train_states, train_next_states, train_actions, train_rewards, train_dones)
+            train_states, train_next_states, train_actions, train_rewards, train_dones = memory.get_data(batchSize)
+            auto_encoder.train(train_states)
 
-        Q_Values = network.predict(next_states[0][np.newaxis, :])
+            encoded = auto_encoder.encode(train_states)
+            encoded_next = auto_encoder.encode(train_next_states)
+            network.train(encoded, encoded_next, train_actions, train_rewards, train_dones)
+
+        encoded = auto_encoder.encode(next_states[0][np.newaxis, :])
+        Q_Values = network.get_predictions(encoded)
         print(f"current Q: {np.max(Q_Values):.2}, V: {np.mean(Q_Values):.2}")
 
         if not iteration % targetUpdateDelay:
@@ -81,7 +93,7 @@ def main():
 
         if not iteration % modelSaveInterval:
             if saveModel:
-                network.save_model()
+                network.save_model(modelPath)
 
         states = next_states
 
@@ -89,12 +101,14 @@ def main():
 
 
 def saveReplayMemory(memory, states, next_states, actionRight, actionLeft, rewards, dones):
-    memory.save_multiple(states, next_states, actionRight, rewards[:, 1], dones)
+    memory.append(states, next_states, actionRight, rewards[:, 1], dones)
+
 
     statesLeft = changeStateSide(states)
     next_statesLeft = changeStateSide(next_states)
 
-    memory.save_multiple(statesLeft, next_statesLeft, actionLeft, rewards[:, 0], dones)
+    memory.append(statesLeft, next_statesLeft, actionLeft, rewards[:, 0], dones)
+
 
 def changeStateSide(states):
     states = states.copy()
@@ -105,6 +119,7 @@ def changeStateSide(states):
     states[:, 4] = states[:, 5]
     states[:, 5] = tmp
     return states
+
 
 def simpleBotLeft(numGames, states):
     actionLeft = np.zeros(shape=numGames, dtype=int)
